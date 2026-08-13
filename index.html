@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Al Khaznah Leathers — Employee Policy Assistant</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="brand">
+        <img src="assets/logo.png" alt="Al Khaznah Leathers logo" class="brand-logo" />
+        <div class="brand-text">
+          <h1>AL KHAZNAH LEATHERS</h1>
+          <p class="brand-sub">Employee Policy Assistant</p>
+        </div>
+      </div>
+      <p class="header-tagline">Ask questions about company policies, procedures, and employee support.</p>
+    </div>
+  </header>
+
+  <div class="demo-notice" role="note">
+    <strong>DEMO KNOWLEDGE BASE.</strong>
+    This prototype uses the real Al Khaznah Leathers brand identity, but the policy answers below are sample
+    content written for demonstration purposes. They do not represent official company policy.
+  </div>
+
+  <main class="app-shell">
+
+    <section class="suggestions" aria-label="Suggested questions">
+      <span class="suggestions-label">Try asking about</span>
+      <div class="suggestion-buttons" id="suggestionButtons">
+        <button type="button" class="chip" data-question="How many annual leave days do employees receive?">Annual Leave</button>
+        <button type="button" class="chip" data-question="What are the standard working hours?">Working Hours</button>
+        <button type="button" class="chip" data-question="How do I submit an expense claim?">Expense Claims</button>
+        <button type="button" class="chip" data-question="I forgot my password, how do I reset it?">IT Support</button>
+        <button type="button" class="chip" data-question="What is the attendance policy?">Attendance</button>
+        <button type="button" class="chip" data-question="What sustainability practices does Al Khaznah follow?">Sustainability</button>
+      </div>
+    </section>
+
+    <section class="chat-panel" aria-label="Policy assistant chat">
+      <div class="chat-panel-header">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span>Policy Assistant</span>
+        <button type="button" id="clearBtn" class="clear-btn" aria-label="Clear conversation">Clear conversation</button>
+      </div>
+
+      <div class="chat-window" id="chatWindow" role="log" aria-live="polite" aria-label="Conversation history">
+        <!-- messages injected by script.js -->
+      </div>
+
+      <form class="chat-input-row" id="chatForm">
+        <label for="chatInput" class="sr-only">Type your question</label>
+        <input
+          type="text"
+          id="chatInput"
+          name="chatInput"
+          placeholder="Type your question, e.g. How many vacation days do I get?"
+          autocomplete="off"
+        />
+        <button type="submit" id="sendBtn">Ask Question</button>
+      </form>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <p>Technical Assignment · Nafidah Mauna</p>
+    <p class="footer-sub">Al Khaznah Leathers brand identity used with sample data &bull; Not an official company system</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
