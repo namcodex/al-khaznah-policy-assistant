@@ -341,7 +341,21 @@
   function tokenize(text) {
     return normalize(text)
       .split(" ")
-      .filter((tok) => tok.length > 0 && !STOPWORDS.has(tok));
+      .filter((tok) => tok.length > 0 && !STOPWORDS.has(tok))
+      .map(stem);
+  }
+
+  // Lightweight plural stemming so "expenses" matches a keyword written as
+  // "expense", "policies" matches "policy", and so on — without a full
+  // stemming library. Deliberately conservative: it leaves words like
+  // "status", "access", "process", and "basis" untouched so it doesn't
+  // mangle words that only happen to end in "s".
+  function stem(word) {
+    if (word.length <= 3) return word;
+    if (word.endsWith("ies")) return word.slice(0, -3) + "y";
+    if (word.endsWith("ss") || word.endsWith("us") || word.endsWith("is")) return word;
+    if (word.endsWith("s")) return word.slice(0, -1);
+    return word;
   }
 
   /* -------------------------------------------------------
@@ -451,17 +465,31 @@
        1. Empty input                      -> validation (handled in UI layer)
        2. Small talk (hi, thanks, bye...)   -> warm human reply, no lookup
        3. Symbols/numbers only, no letters  -> gentle "that's not quite a question" nudge
-       4. Confident knowledge-base match    -> the actual policy answer
-       5. Recognizable topic, no exact hit  -> route to the right department
-       6. Gibberish (no real words at all)  -> friendly "couldn't make that out" nudge
-       7. Real words, but off-topic         -> friendly "that's outside my scope" nudge
-     Steps 2, 3, 6, and 7 never fabricate an answer and never pretend a
+       4. Vague / no real topic yet         -> invite them to continue, not a scope refusal
+       5. Confident knowledge-base match    -> the actual policy answer
+       6. Recognizable topic, no exact hit  -> route to the right department
+       7. Gibberish (no real words at all)  -> friendly "couldn't make that out" nudge
+       8. Real words, but off-topic         -> friendly "that's outside my scope" nudge
+     Steps 2, 3, 4, 7, and 8 never fabricate an answer and never pretend a
      department can help when the question isn't actually about policy.
      ------------------------------------------------------- */
 
   function pickVariant(list) {
     return list[Math.floor(Math.random() * list.length)];
   }
+
+  // Words that only signal "I'm about to ask something" rather than naming
+  // an actual topic — e.g. "I have a question", "can you help me". If every
+  // meaningful word in the input is one of these, the person just hasn't
+  // gotten to their real question yet, so we invite them to continue
+  // instead of telling them we can't help.
+  const VAGUE_META_WORDS = new Set([
+    "question", "questions", "query", "queries", "ask", "asking", "asked",
+    "doubt", "doubts", "concern", "concerns", "help", "assist", "assistance",
+    "info", "information", "something", "anything", "thing", "issue", "issues",
+    "need", "needs", "needed", "want", "wants", "wanted", "got", "talk",
+    "speak", "chat", "quick"
+  ]);
 
   // A modest vocabulary of "real, recognizable words" built from every
   // keyword in the knowledge base plus everyday conversational words.
@@ -548,7 +576,20 @@
       return { resolved: false, text, department: null, topic: null };
     }
 
-    // 4. Confident knowledge-base match.
+    // 4. Vague "I have a question" / "can you help me" style input — the
+    // person hasn't named a topic yet, so invite them to continue rather
+    // than telling them we can't help.
+    const nonMetaTokens = meaningfulTokens.filter((tok) => !VAGUE_META_WORDS.has(tok));
+    if (nonMetaTokens.length === 0) {
+      const text = pickVariant([
+        "Of course — go ahead. What would you like to know? I can help with leave, expenses, IT support, attendance, or workplace safety.",
+        "Sure, happy to help. What's on your mind? Try asking about leave, expense claims, IT support, or safety procedures.",
+        "I'm listening — what would you like to ask? I cover things like leave, working hours, expenses, and IT support."
+      ]);
+      return { resolved: true, text, department: null, topic: null };
+    }
+
+    // 5. Confident knowledge-base match.
     const { entry } = findBestMatch(trimmed);
 
     if (entry) {
@@ -560,7 +601,7 @@
       };
     }
 
-    // 5. No exact policy match, but the question clearly touches a
+    // 6. No exact policy match, but the question clearly touches a
     // department's territory (e.g. mentions "salary" or "travel allowance").
     const department = guessDepartment(trimmed);
 
@@ -573,7 +614,7 @@
       return { resolved: false, text, department, topic: null };
     }
 
-    // 6 / 7. Nothing matched. Work out whether this reads like real
+    // 7 / 8. Nothing matched. Work out whether this reads like real
     // language (just outside scope) or genuine gibberish, and reply
     // in a tone that matches which one it is.
     const recognizedCount = meaningfulTokens.filter((tok) => KNOWLEDGE_VOCABULARY.has(tok)).length;
@@ -609,6 +650,7 @@
   const chatWindow = document.getElementById("chatWindow");
   const chatForm = document.getElementById("chatForm");
   const chatInput = document.getElementById("chatInput");
+  const sendBtn = document.getElementById("sendBtn");
   const clearBtn = document.getElementById("clearBtn");
   const suggestionButtons = document.getElementById("suggestionButtons");
 
@@ -620,13 +662,17 @@
     chatWindow.scrollTop = chatWindow.scrollHeight;
   }
 
+  function formatTime(date) {
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
   function appendUserMessage(text) {
     const wrapper = document.createElement("div");
     wrapper.className = "msg msg-user";
 
     const role = document.createElement("div");
     role.className = "msg-role";
-    role.textContent = "You";
+    role.textContent = "You · " + formatTime(new Date());
 
     const bubble = document.createElement("div");
     bubble.className = "msg-bubble";
@@ -638,13 +684,38 @@
     scrollToBottom();
   }
 
+  function appendTypingIndicator() {
+    const wrapper = document.createElement("div");
+    wrapper.className = "msg msg-assistant";
+    wrapper.id = "typingIndicator";
+
+    const role = document.createElement("div");
+    role.className = "msg-role";
+    role.textContent = "Policy Assistant";
+
+    const bubble = document.createElement("div");
+    bubble.className = "msg-bubble typing-bubble";
+    bubble.innerHTML =
+      '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
+
+    wrapper.appendChild(role);
+    wrapper.appendChild(bubble);
+    chatWindow.appendChild(wrapper);
+    scrollToBottom();
+  }
+
+  function removeTypingIndicator() {
+    const el = document.getElementById("typingIndicator");
+    if (el) el.remove();
+  }
+
   function appendAssistantMessage(response) {
     const wrapper = document.createElement("div");
     wrapper.className = "msg msg-assistant";
 
     const role = document.createElement("div");
     role.className = "msg-role";
-    role.textContent = "Policy Assistant";
+    role.textContent = "Policy Assistant · " + formatTime(new Date());
 
     const bubble = document.createElement("div");
     bubble.className = "msg-bubble";
@@ -706,7 +777,18 @@
     });
   }
 
+  function setInputBusy(isBusy) {
+    chatInput.disabled = isBusy;
+    sendBtn.disabled = isBusy;
+    suggestionButtons.querySelectorAll(".chip").forEach((chip) => {
+      chip.disabled = isBusy;
+    });
+  }
+
+  let isBusy = false;
+
   function handleAsk(rawQuestion) {
+    if (isBusy) return;
     const question = rawQuestion.replace(/\s+/g, " ").trim();
 
     if (question.length === 0) {
@@ -720,13 +802,20 @@
     appendUserMessage(question);
 
     const response = buildResponse(question);
-    // Small delay reads more naturally as a response rather than an instant echo.
-    window.setTimeout(function () {
-      appendAssistantMessage(response);
-    }, 220);
-
     chatInput.value = "";
-    chatInput.focus();
+    isBusy = true;
+    setInputBusy(true);
+    appendTypingIndicator();
+
+    // Small delay reads more naturally as a considered response rather
+    // than an instant, robotic echo.
+    window.setTimeout(function () {
+      removeTypingIndicator();
+      appendAssistantMessage(response);
+      isBusy = false;
+      setInputBusy(false);
+      chatInput.focus();
+    }, 500 + Math.random() * 400);
   }
 
   chatForm.addEventListener("submit", function (event) {
@@ -891,6 +980,12 @@
   }
 
   renderDepartments();
+
+  const headerStats = document.getElementById("headerStats");
+  if (headerStats) {
+    headerStats.textContent =
+      KNOWLEDGE_BASE.length + " sample policies on file · " + DEPARTMENT_ORDER.length + " departments · Available 24/7";
+  }
 
   // Initial render.
   renderWelcomeMessage();
