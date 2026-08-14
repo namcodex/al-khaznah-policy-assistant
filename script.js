@@ -287,6 +287,35 @@
     }
   ];
 
+  // Descriptive metadata for the "Departments" view — a quick reference
+  // card per department, independent of the matching engine above.
+  const DEPARTMENT_INFO = [
+    {
+      department: "HR",
+      description:
+        "Handles leave, attendance, working hours, employee records, and general employment questions.",
+      topics: ["Annual Leave", "Sick Leave", "Working Hours", "Attendance", "Employee Records", "Remote Work"]
+    },
+    {
+      department: "Finance",
+      description:
+        "Handles expense claims, reimbursements, and business spending questions.",
+      topics: ["Expense Claims", "Submission Deadlines", "Business Meals"]
+    },
+    {
+      department: "IT",
+      description:
+        "Handles account access, hardware issues, and connectivity problems.",
+      topics: ["Password Reset", "Email / Outlook", "Laptop Support", "Wi-Fi & Network"]
+    },
+    {
+      department: "Operations",
+      description:
+        "Handles workplace safety, site access, incident reporting, and production floor procedures.",
+      topics: ["PPE & Safety", "Incident Reporting", "Site Access", "Sustainability"]
+    }
+  ];
+
   /* -------------------------------------------------------
      3. TEXT NORMALIZATION + TOKENIZATION
      ------------------------------------------------------- */
@@ -417,7 +446,66 @@
 
   /* -------------------------------------------------------
      5. RESPONSE BUILDER
+
+     Priority order for a submitted question:
+       1. Empty input                      -> validation (handled in UI layer)
+       2. Small talk (hi, thanks, bye...)   -> warm human reply, no lookup
+       3. Symbols/numbers only, no letters  -> gentle "that's not quite a question" nudge
+       4. Confident knowledge-base match    -> the actual policy answer
+       5. Recognizable topic, no exact hit  -> route to the right department
+       6. Gibberish (no real words at all)  -> friendly "couldn't make that out" nudge
+       7. Real words, but off-topic         -> friendly "that's outside my scope" nudge
+     Steps 2, 3, 6, and 7 never fabricate an answer and never pretend a
+     department can help when the question isn't actually about policy.
      ------------------------------------------------------- */
+
+  function pickVariant(list) {
+    return list[Math.floor(Math.random() * list.length)];
+  }
+
+  // A modest vocabulary of "real, recognizable words" built from every
+  // keyword in the knowledge base plus everyday conversational words.
+  // Used only to tell apart "a real sentence I just don't cover" from
+  // "keyboard mashing" — it doesn't need to be exhaustive to do that job.
+  const EVERYDAY_WORDS = [
+    "hi", "hello", "hey", "morning", "afternoon", "evening", "thanks", "thank",
+    "please", "help", "question", "ask", "asking", "policy", "policies",
+    "company", "staff", "employee", "employees", "work", "working", "office",
+    "need", "want", "tell", "know", "information", "info", "contact", "today",
+    "tomorrow", "sorry", "yes", "no", "ok", "okay", "bye", "goodbye", "team",
+    "manager", "supervisor", "department", "site", "tannery", "leather",
+    "joke", "weather", "name", "who", "why", "explain", "understand", "sure",
+    "good", "great", "fine", "sorry", "issue", "problem", "help me"
+  ];
+
+  const KNOWLEDGE_VOCABULARY = (function buildVocabulary() {
+    const vocab = new Set();
+    KNOWLEDGE_BASE.forEach((entry) => {
+      entry.keywords.forEach((kw) => {
+        tokenize(kw).forEach((tok) => vocab.add(tok));
+      });
+    });
+    DEPARTMENT_ROUTES.forEach((route) => {
+      route.keywords.forEach((kw) => {
+        tokenize(kw).forEach((tok) => vocab.add(tok));
+      });
+    });
+    EVERYDAY_WORDS.forEach((w) => {
+      tokenize(w).forEach((tok) => vocab.add(tok));
+      if (w.indexOf(" ") === -1) vocab.add(w);
+    });
+    return vocab;
+  })();
+
+  const SMALL_TALK = new Set([
+    "hi", "hello", "hey", "hiya", "yo", "good morning", "good afternoon",
+    "good evening", "thanks", "thank you", "cheers", "ok", "okay", "bye",
+    "goodbye", "see you", "test", "testing"
+  ]);
+
+  function isSmallTalk(normalizedQuestion) {
+    return SMALL_TALK.has(normalizedQuestion);
+  }
 
   function buildResponse(userQuestion) {
     const trimmed = userQuestion.trim();
@@ -426,21 +514,42 @@
       return null; // handled separately as input validation
     }
 
-    // Very short / low-content questions ("hi", "ok", "?") are treated
-    // as unresolved rather than forced into a guess.
-    const meaningfulTokens = tokenize(trimmed);
-    if (meaningfulTokens.length === 0) {
-      return {
-        resolved: false,
-        text:
-          "I need a little more detail to help with that. Could you rephrase your question, " +
-          "for example by naming a topic such as leave, expenses, IT, or safety?",
-        department: null,
-        topic: null
-      };
+    const normalizedQuestion = normalize(trimmed);
+
+    // 2. Small talk — greet back like a person would, not a script.
+    if (isSmallTalk(normalizedQuestion)) {
+      const greeting = pickVariant([
+        "Hello! What can I help you with today — leave, expenses, IT, or something else?",
+        "Hi there. Happy to help — what would you like to know?",
+        "Hey! Ask me anything about leave, expenses, IT support, or workplace policies."
+      ]);
+      return { resolved: true, text: greeting, department: null, topic: null };
     }
 
-    const { entry, score } = findBestMatch(trimmed);
+    // 3. No letters at all — just digits, symbols, or stray keys.
+    if (!/[a-z]/i.test(trimmed)) {
+      const text = pickVariant([
+        "That looks like it might have been a stray key press rather than a question — mind giving it another go? " +
+          "You can ask me things like \"how many leave days do I get\" or \"how do I reset my password.\"",
+        "I'm not seeing an actual question in there, just numbers or symbols. Try typing it out, for example: " +
+          "\"what are the working hours\" or \"how do I submit an expense claim.\"",
+        "Hmm, that didn't come through as a question I can work with. Feel free to type it in plain words — " +
+          "something like \"do I need PPE in the production area\" works well."
+      ]);
+      return { resolved: false, text, department: null, topic: null };
+    }
+
+    const meaningfulTokens = tokenize(trimmed);
+    if (meaningfulTokens.length === 0) {
+      const text = pickVariant([
+        "Could you say a little more? Try naming a topic, like leave, expenses, IT, or safety.",
+        "I need a bit more to go on — what's the topic? For example, leave, working hours, or IT support."
+      ]);
+      return { resolved: false, text, department: null, topic: null };
+    }
+
+    // 4. Confident knowledge-base match.
+    const { entry } = findBestMatch(trimmed);
 
     if (entry) {
       return {
@@ -451,28 +560,46 @@
       };
     }
 
-    // No confident match — never fabricate. Route to a department instead.
+    // 5. No exact policy match, but the question clearly touches a
+    // department's territory (e.g. mentions "salary" or "travel allowance").
     const department = guessDepartment(trimmed);
 
     if (department) {
-      return {
-        resolved: false,
-        text:
-          `I don't have enough information in the current knowledge base to answer this accurately. ` +
-          `Please contact the ${department} Department for assistance.`,
-        department: department,
-        topic: null
-      };
+      const text = pickVariant([
+        `I don't have a specific answer for that in the current knowledge base, but this sounds like something for the ${department} Department — worth reaching out to them directly.`,
+        `That's not covered in what I have on file. The ${department} Department would be the right team to ask.`,
+        `I can't confirm that from the knowledge base I have, so I'd point you to the ${department} Department for an accurate answer.`
+      ]);
+      return { resolved: false, text, department, topic: null };
     }
 
-    return {
-      resolved: false,
-      text:
-        "I don't have enough information in the current knowledge base to answer this accurately. " +
-        "Please contact your line manager or the HR Department, who can direct you to the right team.",
-      department: "HR",
-      topic: null
-    };
+    // 6 / 7. Nothing matched. Work out whether this reads like real
+    // language (just outside scope) or genuine gibberish, and reply
+    // in a tone that matches which one it is.
+    const recognizedCount = meaningfulTokens.filter((tok) => KNOWLEDGE_VOCABULARY.has(tok)).length;
+    const looksLikeGibberish = recognizedCount === 0;
+
+    if (looksLikeGibberish) {
+      const text = pickVariant([
+        "I couldn't quite make sense of that one — could you rephrase it? I'm best with questions about leave, " +
+          "expenses, IT support, attendance, or workplace safety.",
+        "Hmm, that one lost me. Try rewording it — something like \"what's the sick leave policy\" or " +
+          "\"how do I connect to Wi-Fi\" is the kind of thing I can help with.",
+        "Not sure I followed that. Could you try asking again in plain words? I cover leave, expenses, IT, and " +
+          "workplace safety topics."
+      ]);
+      return { resolved: false, text, department: null, topic: null };
+    }
+
+    const text = pickVariant([
+      "That's a bit outside what I'm set up to help with here — I'm focused on company policies. Try asking " +
+        "about leave, expenses, IT support, or workplace safety.",
+      "I'm built specifically for policy questions, so that one's outside my lane. Ask me about things like " +
+        "annual leave, expense claims, or IT support instead.",
+      "That's not something I can help with through this tool — I only cover company policy topics. Try leave, " +
+        "attendance, expenses, or IT."
+    ]);
+    return { resolved: false, text, department: null, topic: null };
   }
 
   /* -------------------------------------------------------
@@ -625,6 +752,145 @@
       handleAsk(question);
     }
   });
+
+  /* -------------------------------------------------------
+     View switching (Assistant / Policy Directory / Departments)
+     ------------------------------------------------------- */
+
+  const viewTabs = document.querySelectorAll(".view-tab");
+  const viewPanels = document.querySelectorAll(".view");
+
+  function switchView(viewName) {
+    viewTabs.forEach((tab) => {
+      const isActive = tab.getAttribute("data-view") === viewName;
+      tab.classList.toggle("is-active", isActive);
+      tab.setAttribute("aria-selected", isActive ? "true" : "false");
+    });
+    viewPanels.forEach((panel) => {
+      panel.classList.toggle("is-hidden", panel.getAttribute("data-view-panel") !== viewName);
+    });
+  }
+
+  viewTabs.forEach((tab) => {
+    tab.addEventListener("click", function () {
+      switchView(tab.getAttribute("data-view"));
+    });
+  });
+
+  /* -------------------------------------------------------
+     Policy Directory (browse / search all policies)
+     ------------------------------------------------------- */
+
+  const directoryGroups = document.getElementById("directoryGroups");
+  const directorySearch = document.getElementById("directorySearch");
+  const directoryEmpty = document.getElementById("directoryEmpty");
+  const directoryCount = document.getElementById("directoryCount");
+
+  const DEPARTMENT_ORDER = ["HR", "Finance", "IT", "Operations"];
+
+  function renderDirectory(filterText) {
+    const query = normalize(filterText || "");
+    directoryGroups.innerHTML = "";
+
+    let totalShown = 0;
+
+    DEPARTMENT_ORDER.forEach((dept) => {
+      const entries = KNOWLEDGE_BASE.filter((entry) => {
+        if (entry.department !== dept) return false;
+        if (!query) return true;
+        const haystack = normalize(entry.topic + " " + entry.answer + " " + entry.keywords.join(" "));
+        return haystack.includes(query);
+      });
+
+      if (entries.length === 0) return;
+
+      totalShown += entries.length;
+
+      const groupWrap = document.createElement("div");
+      groupWrap.className = "directory-group";
+
+      const groupTitle = document.createElement("h3");
+      groupTitle.className = "directory-group-title";
+      groupTitle.textContent = dept + " (" + entries.length + ")";
+      groupWrap.appendChild(groupTitle);
+
+      entries.forEach((entry) => {
+        const card = document.createElement("div");
+        card.className = "policy-card";
+
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "policy-card-toggle";
+        toggle.innerHTML =
+          "<span>" + escapeHtml(entry.topic) + "</span>" +
+          '<span class="policy-card-chevron" aria-hidden="true">&#9656;</span>';
+
+        const body = document.createElement("div");
+        body.className = "policy-card-body is-hidden";
+        body.textContent = entry.answer;
+
+        toggle.addEventListener("click", function () {
+          const isOpen = card.classList.toggle("is-open");
+          body.classList.toggle("is-hidden", !isOpen);
+        });
+
+        card.appendChild(toggle);
+        card.appendChild(body);
+        groupWrap.appendChild(card);
+      });
+
+      directoryGroups.appendChild(groupWrap);
+    });
+
+    directoryEmpty.classList.toggle("is-hidden", totalShown > 0);
+    directoryCount.textContent = query
+      ? totalShown + " polic" + (totalShown === 1 ? "y" : "ies") + " match \"" + filterText.trim() + "\""
+      : "Browse every sample policy on file, grouped by department (" + KNOWLEDGE_BASE.length + " total).";
+  }
+
+  directorySearch.addEventListener("input", function () {
+    renderDirectory(directorySearch.value);
+  });
+
+  renderDirectory("");
+
+  /* -------------------------------------------------------
+     Departments quick-reference grid
+     ------------------------------------------------------- */
+
+  const departmentGrid = document.getElementById("departmentGrid");
+
+  function renderDepartments() {
+    departmentGrid.innerHTML = "";
+
+    DEPARTMENT_INFO.forEach((dept) => {
+      const card = document.createElement("div");
+      card.className = "department-card";
+
+      const title = document.createElement("h3");
+      title.className = "department-card-title";
+      title.textContent = dept.department;
+
+      const desc = document.createElement("p");
+      desc.className = "department-card-desc";
+      desc.textContent = dept.description;
+
+      const topicList = document.createElement("ul");
+      topicList.className = "department-card-topics";
+      dept.topics.forEach((topic) => {
+        const li = document.createElement("li");
+        li.textContent = topic;
+        topicList.appendChild(li);
+      });
+
+      card.appendChild(title);
+      card.appendChild(desc);
+      card.appendChild(topicList);
+      departmentGrid.appendChild(card);
+    });
+  }
+
+  renderDepartments();
 
   // Initial render.
   renderWelcomeMessage();
