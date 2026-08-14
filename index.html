@@ -29,40 +29,99 @@
 
   <main class="app-shell">
 
-    <section class="suggestions" aria-label="Suggested questions">
-      <span class="suggestions-label">Try asking about</span>
-      <div class="suggestion-buttons" id="suggestionButtons">
-        <button type="button" class="chip" data-question="How many annual leave days do employees receive?">Annual Leave</button>
-        <button type="button" class="chip" data-question="What are the standard working hours?">Working Hours</button>
-        <button type="button" class="chip" data-question="How do I submit an expense claim?">Expense Claims</button>
-        <button type="button" class="chip" data-question="I forgot my password, how do I reset it?">IT Support</button>
-        <button type="button" class="chip" data-question="What is the attendance policy?">Attendance</button>
-        <button type="button" class="chip" data-question="What sustainability practices does Al Khaznah follow?">Sustainability</button>
+    <nav class="view-tabs" aria-label="Application sections">
+      <button type="button" class="view-tab is-active" id="tabAssistant" data-view="assistant" aria-selected="true">
+        Ask the Assistant
+      </button>
+      <button type="button" class="view-tab" id="tabDirectory" data-view="directory" aria-selected="false">
+        Browse Policies
+      </button>
+      <button type="button" class="view-tab" id="tabDepartments" data-view="departments" aria-selected="false">
+        Departments
+      </button>
+    </nav>
+
+    <!-- ===================== ASSISTANT VIEW ===================== -->
+    <section class="view" id="view-assistant" data-view-panel="assistant">
+
+      <div class="suggestions" aria-label="Suggested questions">
+        <span class="suggestions-label">Try asking about</span>
+        <div class="suggestion-buttons" id="suggestionButtons">
+          <button type="button" class="chip" data-question="How many annual leave days do employees receive?">Annual Leave</button>
+          <button type="button" class="chip" data-question="What are the standard working hours?">Working Hours</button>
+          <button type="button" class="chip" data-question="How do I submit an expense claim?">Expense Claims</button>
+          <button type="button" class="chip" data-question="I forgot my password, how do I reset it?">IT Support</button>
+          <button type="button" class="chip" data-question="What is the attendance policy?">Attendance</button>
+          <button type="button" class="chip" data-question="What sustainability practices does Al Khaznah follow?">Sustainability</button>
+        </div>
       </div>
+
+      <div class="chat-panel" aria-label="Policy assistant chat">
+        <div class="chat-panel-header">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span>Policy Assistant</span>
+          <button type="button" id="clearBtn" class="clear-btn" aria-label="Clear conversation">Clear conversation</button>
+        </div>
+
+        <div class="chat-window" id="chatWindow" role="log" aria-live="polite" aria-label="Conversation history">
+          <!-- messages injected by script.js -->
+        </div>
+
+        <form class="chat-input-row" id="chatForm">
+          <label for="chatInput" class="sr-only">Type your question</label>
+          <input
+            type="text"
+            id="chatInput"
+            name="chatInput"
+            placeholder="Type your question, e.g. How many vacation days do I get?"
+            autocomplete="off"
+          />
+          <button type="submit" id="sendBtn">Ask Question</button>
+        </form>
+      </div>
+
     </section>
 
-    <section class="chat-panel" aria-label="Policy assistant chat">
-      <div class="chat-panel-header">
-        <span class="status-dot" aria-hidden="true"></span>
-        <span>Policy Assistant</span>
-        <button type="button" id="clearBtn" class="clear-btn" aria-label="Clear conversation">Clear conversation</button>
+    <!-- ===================== POLICY DIRECTORY VIEW ===================== -->
+    <section class="view is-hidden" id="view-directory" data-view-panel="directory">
+
+      <div class="directory-header">
+        <div>
+          <h2 class="view-heading">Policy Directory</h2>
+          <p class="view-subheading" id="directoryCount">Browse every sample policy on file, grouped by department.</p>
+        </div>
       </div>
 
-      <div class="chat-window" id="chatWindow" role="log" aria-live="polite" aria-label="Conversation history">
-        <!-- messages injected by script.js -->
-      </div>
-
-      <form class="chat-input-row" id="chatForm">
-        <label for="chatInput" class="sr-only">Type your question</label>
+      <div class="directory-search-row">
+        <label for="directorySearch" class="sr-only">Search policies</label>
         <input
           type="text"
-          id="chatInput"
-          name="chatInput"
-          placeholder="Type your question, e.g. How many vacation days do I get?"
+          id="directorySearch"
+          placeholder="Search by keyword, e.g. leave, password, PPE"
           autocomplete="off"
         />
-        <button type="submit" id="sendBtn">Ask Question</button>
-      </form>
+      </div>
+
+      <div class="directory-groups" id="directoryGroups">
+        <!-- populated by script.js -->
+      </div>
+
+      <p class="directory-empty is-hidden" id="directoryEmpty">
+        No policies match that search. Try a different keyword, or ask the Assistant directly.
+      </p>
+
+    </section>
+
+    <!-- ===================== DEPARTMENTS VIEW ===================== -->
+    <section class="view is-hidden" id="view-departments" data-view-panel="departments">
+
+      <h2 class="view-heading">Departments</h2>
+      <p class="view-subheading">A quick reference for what each department handles, and what to ask the Assistant about.</p>
+
+      <div class="department-grid" id="departmentGrid">
+        <!-- populated by script.js -->
+      </div>
+
     </section>
 
   </main>
